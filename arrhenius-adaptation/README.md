@@ -90,30 +90,17 @@ tail -5 logs/setup-*.out    # should end: === SETUP COMPLETE ===
 
 Takes 5–10 minutes; needs network access from the compute node.
 
-The venv must be built **on a GPU node** — on Arrhenius the login node is
-`x86_64` and compute nodes are `aarch64`. `setup_env.sh` aborts on the wrong
-architecture; set `OLMIX_EXPECT_ARCH=` to disable if your cluster is uniform.
-
-`setup_env.sh` pins several versions that are easy to rediscover the hard way:
-
-- **`ai2-olmo-core`** is pinned in `pyproject.toml` to a git *branch* that no
-  longer exists upstream. Install by the commit SHA recorded in `uv.lock`.
-- **Python module name** — on Arrhenius the bare `Python/...` module resolves to
-  an `x86_64` build even on a GH200 node; `GPU/Python/3.13.5-bare-gcc-2025b-eb`
-  is the `aarch64` one. Check the equivalent on your cluster.
-- **`beaker-py>=2.5.4`** plus `beaker-gantry` are needed to *import*
-  `olmix.launch.beaker`, even though neither is ever called. Olmix's own pin
-  (`>=1,<2`) is too old.
-- **`wandb==0.19.9`**, not latest. The pinned olmo-core calls
-  `wandb.finish(quiet=True)`; current wandb removed that argument. The failure
-  mode is training completing successfully and then crashing during cleanup.
-- **`protobuf`** — `wandb==0.19.9` needs `<6`, while `beaker-gantry`'s dependency
-  chain pulls `google-cloud-storage` wanting `>=6.33.5`. Resolve by dropping
-  `google-cloud-compute` (unused on this code path) and pinning
-  `google-api-core<2.25` and `google-cloud-storage<2.19`.
+Must run on a GPU node — the venv is architecture-specific and Arrhenius login
+nodes are `x86_64` while compute nodes are `aarch64`. `setup_env.sh` aborts on a
+mismatch; set `OLMIX_EXPECT_ARCH=` to disable.
 
 `$OLMIX_ROOT` ends up holding `venv/`, `data/` (tokenized shards) and
 `checkpoints/`.
+
+`setup_env.sh` carries non-obvious pins — olmo-core by commit SHA (its branch is
+gone upstream), `wandb==0.19.9` and `protobuf<6` (newer wandb dropped the
+`finish(quiet=)` arg olmo-core calls), and `beaker-py>=2.5.4` + `beaker-gantry`,
+needed only to *import* `olmix.launch.beaker`. Each is commented in the script.
 
 ## Adapting to another cluster
 
