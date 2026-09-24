@@ -30,7 +30,7 @@ echo "python: $(python3 --version)"
 # Keep pip's cache off the 30G home quota.
 export PIP_CACHE_DIR=$OLMIX_ROOT/.pip-cache
 export TMPDIR=$OLMIX_ROOT/.tmp
-mkdir -p "$PIP_CACHE_DIR" "$TMPDIR"
+mkdir -p "$PIP_CACHE_DIR" "$TMPDIR" "$OLMIX_ROOT"
 
 rm -rf "$OLMIX_ROOT/venv"
 python3 -m venv "$OLMIX_ROOT/venv"
@@ -62,10 +62,21 @@ pip install click cvxpy ecos lightgbm matplotlib numpy pandas pydantic pyyaml \
 # NOTE: olmix's own pyproject.toml pins ">=1,<2" but that is stale -- olmo-core's
 # launch/beaker.py (which olmix/launch/beaker.py imports) needs symbols only present
 # in beaker-py 2.x (e.g. BeakerImageNotFound), AND imports `gantry.api.GitRepoState`
-# at module level. So the full olmo-core [beaker] extra is needed just to IMPORT
+# at module level. So beaker-py + beaker-gantry are needed just to IMPORT
 # olmix.launch.beaker, even though our SLURM path never calls Beaker.from_env().
+#
+# google-cloud-compute is deliberately NOT installed. It is part of olmo-core's
+# [beaker] extra but unused on this code path, and it forces protobuf>=6.33.5,
+# which conflicts with wandb 0.19.9's protobuf<6. Installing it produces a venv
+# where either wandb or google.rpc fails to import, depending which wins.
 pip install "beaker-py>=2.5.4,<3.0" "GitPython>=3.0,<4.0" \
-            "beaker-gantry>=3.4.3,<4.0" "google-cloud-compute"
+            "beaker-gantry>=3.4.3,<4.0"
+
+# Hold the google stack below the protobuf 6 boundary. beaker-gantry pulls
+# google-cloud-storage, whose recent releases require protobuf>=6.33.5; the
+# generated google/rpc/*_pb2.py modules then refuse to load under protobuf 5.
+# These pins match the versions verified working on Arrhenius.
+pip install "google-api-core<2.25" "google-cloud-storage<2.19" "protobuf<6,>=3.19.5"
 
 echo "=== olmix itself (--no-deps: olmo-core already satisfied above) ==="
 cd "$OLMIX_REPO"
@@ -73,6 +84,13 @@ pip install -e . --no-deps
 
 echo "=== verify ==="
 python -c "import torch, olmo_core, olmix; print('imports ok')"
+python -c "import torch; assert torch.cuda.is_available(); print('cuda ok')"
+# wandb and the google stack are the pair most likely to be broken by a resolver
+# change (see the protobuf note above) -- check both, not just that olmix imports.
+python -c "import wandb; print('wandb', wandb.__version__)"
+python -c "from google.rpc import error_details_pb2; print('google protobuf ok')"
+# The SLURM launcher imports these two; they pull in the whole beaker/gantry chain.
+python -c "from olmix.launch.beaker import mk_experiment_group, mk_instance_cmd; print('launcher imports ok')"
 olmix --help >/dev/null && echo "olmix CLI ok"
 # fit is registered in a try/except ImportError, so absence means a dep failed silently
 olmix fit --help >/dev/null && echo "olmix fit ok"

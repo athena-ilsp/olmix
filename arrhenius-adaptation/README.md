@@ -70,17 +70,31 @@ unset.
 
 ## Environment setup
 
-The venv must be built **on a GPU node**. On Arrhenius the login node is `x86_64`
-while compute nodes are `aarch64`, so a venv built on the login node will not run.
-
 ```bash
-sbatch -A <account> -p gpu --gres=gpu:1 -t 45 \
+git clone https://github.com/<you>/olmix.git
+cd olmix/arrhenius-adaptation
+
+# Bulk artifacts (venv ~6 GB, checkpoints ~1.3 GB/variant) — use project/scratch
+# storage, not home.
+export OLMIX_ROOT=/path/to/project-storage/olmix-work
+export OLMIX_SLURM_ACCOUNT=<your-slurm-account>
+export OLMIX_PYTHON_MODULE=<python-module>          # needs Python >= 3.11
+mkdir -p "$OLMIX_ROOT" logs
+
+sbatch -A "$OLMIX_SLURM_ACCOUNT" -p gpu --gres=gpu:1 -t 45 \
   -J olmix-setup -o logs/setup-%j.out \
-  --wrap="bash scripts/setup_env.sh"
+  --wrap="OLMIX_ROOT=$OLMIX_ROOT bash scripts/setup_env.sh"
+
+tail -5 logs/setup-*.out    # should end: === SETUP COMPLETE ===
 ```
 
-`setup_env.sh` encodes several version constraints that are easy to rediscover the
-hard way:
+Takes 5–10 minutes; needs network access from the compute node.
+
+The venv must be built **on a GPU node** — on Arrhenius the login node is
+`x86_64` and compute nodes are `aarch64`. `setup_env.sh` aborts on the wrong
+architecture; set `OLMIX_EXPECT_ARCH=` to disable if your cluster is uniform.
+
+`setup_env.sh` pins several versions that are easy to rediscover the hard way:
 
 - **`ai2-olmo-core`** is pinned in `pyproject.toml` to a git *branch* that no
   longer exists upstream. Install by the commit SHA recorded in `uv.lock`.
@@ -98,17 +112,8 @@ hard way:
   `google-cloud-compute` (unused on this code path) and pinning
   `google-api-core<2.25` and `google-cloud-storage<2.19`.
 
-## Storage layout
-
-Keep bulk artifacts off the home filesystem — the venv alone is ~6 GB, and
-checkpoints grow ~1.3 GB per variant. On Arrhenius the home quota is 30 GB.
-
-```
-<project storage>/olmix-work/
-  venv/          Python environment
-  data/          tokenized shards
-  checkpoints/   per-run checkpoints and offline W&B data
-```
+`$OLMIX_ROOT` ends up holding `venv/`, `data/` (tokenized shards) and
+`checkpoints/`.
 
 ## Adapting to another cluster
 
@@ -130,34 +135,38 @@ must be edited directly.
 
 ## Running the pipeline
 
-Edit `configs/gen.yaml` (data sources, swarm size) and `configs/base.yaml` (model,
-eval tasks) first, then:
+Edit `configs/gen.yaml` (data sources, swarm) and `configs/base.yaml` (model,
+eval tasks) first. Every step runs on a GPU node because it needs the venv.
 
 ```bash
-# 1. Compute priors and sample swarm variants
-sbatch -A <account> -p gpu --gres=gpu:1 -t 10 \
-  -J olmix-gen -o logs/gen-%j.out scripts/run_priors_generate.sh
+SB="sbatch -A $OLMIX_SLURM_ACCOUNT -p gpu --gres=gpu:1"
 
-# 2. Generate one sbatch script per variant
-sbatch -A <account> -p gpu --gres=gpu:1 -t 10 \
-  -J olmix-gensb -o logs/gensb-%j.out scripts/run_generate_sbatch.sh
+# 1. Compute priors, sample swarm variants -> variants/
+$SB -t 10 -J olmix-gen -o logs/gen-%j.out scripts/run_priors_generate.sh
 
-# 3. Submit them
+# 2. Generate one sbatch script per variant -> jobs/
+$SB -t 10 -J olmix-gensb -o logs/gensb-%j.out scripts/run_generate_sbatch.sh
+
+# 3. Train. One job per variant; wait for all to finish.
 for f in jobs/*.sbatch; do sbatch "$f"; done
+squeue -u "$USER"
 
-# 4. After they finish: export CSVs and fit
-python scripts/export_csvs.py --variants variants --logs logs \
-  --checkpoints "$OLMIX_ROOT/checkpoints/slurm" --out-dir .
-olmix fit --config configs/fit.yaml --output-dir output/my_fit
+# 4. Export CSVs and fit
+$SB -t 15 -J olmix-fit -o logs/fit-%j.out --wrap="
+  source /etc/profile
+  module load ${OLMIX_PYTHON_MODULE:-GPU/Python/3.13.5-bare-gcc-2025b-eb}
+  source $OLMIX_ROOT/venv/bin/activate
+  python scripts/export_csvs.py --variants variants --logs logs \
+    --checkpoints $OLMIX_ROOT/checkpoints/slurm --out-dir .
+  olmix fit --config configs/fit.yaml --output-dir output/my_fit
+"
+
+# 5. Read the proposed mixture
+find output/my_fit -name '*optimal*.json' -exec cat {} \;
 ```
 
-Step 4 needs the venv, so run it under sbatch on a GPU node too.
-
-`run_generate_sbatch.sh` passes extra flags through to `olmix_slurm.py`; use
-`--no-eval --limit 1` for a fast single-variant smoke test.
-
-Results land in `output/my_fit/<hash>/`, including `*_optimal.json` with the
-proposed mixture.
+For a fast single-variant smoke test, add `--no-eval --limit 1` to step 2 —
+`run_generate_sbatch.sh` passes extra flags through to `olmix_slurm.py`.
 
 ## Configuration for future runs
 
@@ -333,7 +342,7 @@ the `exact` proposer reads log-linear coefficients directly and will not work
 with other regressors. Set `fit_only: true` to inspect regression quality before
 trusting a proposal.
 
-## Notes and gotchas
+## Extra notes
 
 **Token shards are raw binary, not `.npy`.** Despite the extension, olmo-core
 reads them with `np.memmap(path, dtype=...)`. Write them with `ndarray.tofile()`;
