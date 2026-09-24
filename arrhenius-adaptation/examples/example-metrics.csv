@@ -1,0 +1,9 @@
+run,name,index,arc_easy_test_rc_5shot_bpb,arc_easy_test_rc_5shot_bpb_v2,hellaswag_rc_5shot_bpb,hellaswag_rc_5shot_bpb_v2,piqa_val_rc_5shot_bpb,piqa_val_rc_5shot_bpb_v2,sy_test_rc_5shot_bpb_v2,winogrande_val_rc_5shot_bpb,winogrande_val_rc_5shot_bpb_v2
+toy-swarm-40f05e18-0000,toy-swarm-40f05e18-0000,0,,,,,,,,,
+toy-swarm-40f05e18-0001,toy-swarm-40f05e18-0001,1,3.484,3.207,3.658,3.618,3.859,3.779,,4.502,4.058
+toy-swarm-40f05e18-0002,toy-swarm-40f05e18-0002,2,3.487,3.209,3.667,3.627,3.865,3.785,3.208,4.502,4.061
+toy-swarm-40f05e18-0003,toy-swarm-40f05e18-0003,3,3.484,3.207,3.661,3.621,3.86,3.78,,4.507,4.062
+toy-swarm-40f05e18-0004,toy-swarm-40f05e18-0004,4,3.485,3.208,3.664,3.625,3.863,3.783,,4.506,4.063
+toy-swarm-40f05e18-0005,toy-swarm-40f05e18-0005,5,3.485,3.208,3.664,3.625,3.862,3.783,,4.505,4.062
+toy-swarm-40f05e18-0006,toy-swarm-40f05e18-0006,6,3.484,3.208,3.663,3.624,3.862,3.782,,4.508,4.065
+toy-swarm-40f05e18-0007,toy-swarm-40f05e18-0007,7,3.487,3.21,3.669,3.629,3.867,3.787,,4.508,4.064

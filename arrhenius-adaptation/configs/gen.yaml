@@ -1,0 +1,49 @@
+# GenerationConfig: data sources + swarm sampling parameters.
+#
+# Replace the /path/to/... globs below with your tokenized shards, then regenerate
+# the `priors:` block with `scripts/run_priors_generate.sh` and paste it here and
+# into fit.yaml -- olmix fit asserts the priors keys match the domain columns.
+#
+# max_tokens must equal 20 * params * chinchilla_multiple for the model chosen in
+# base.yaml (olmo3_14m at 0.5 -> 140M). Nothing cross-checks the two files.
+name: toy-swarm
+
+data:
+  sources:
+    - name: web
+      paths:
+        - "/path/to/olmix-work/data/web/*.npy"
+    - name: wiki
+      paths:
+        - "/path/to/olmix-work/data/wiki/*.npy"
+    - name: code
+      paths:
+        - "/path/to/olmix-work/data/code/*.npy"
+    - name: science
+      paths:
+        - "/path/to/olmix-work/data/science/*.npy"
+
+priors:
+  relative_sizes:
+    web: 0.25
+    wiki: 0.25
+    code: 0.25
+    science: 0.25
+  token_counts:
+    web: 200000000
+    wiki: 200000000
+    code: 200000000
+    science: 200000000
+
+swarm:
+  seed: 42
+  variants: 8
+  mix_temperature: 1.0
+  min_strength: 0.1
+  max_strength: 5.0
+  minimum_weight: 0.002
+
+# 20 * 14_000_000 params * 0.5 chinchilla_multiple -- must match base.yaml's
+# training.proxy_model_id + training.chinchilla_multiple by hand (generate does
+# not cross-check this).
+max_tokens: 140000000

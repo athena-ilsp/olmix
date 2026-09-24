@@ -1,5 +1,6 @@
 """Cloud storage utilities."""
 
+from glob import glob as _local_glob
 from urllib.parse import urlparse
 
 import s3fs
@@ -7,7 +8,7 @@ from olmo_core.io import is_url
 
 
 def expand_cloud_globs(paths: list[str], fs: s3fs.S3FileSystem | None = None) -> list[str]:
-    """Expand glob patterns in cloud storage paths.
+    """Expand glob patterns in cloud storage paths (or local paths).
 
     Args:
         paths: List of paths, some may contain glob patterns (*)
@@ -27,7 +28,12 @@ def expand_cloud_globs(paths: list[str], fs: s3fs.S3FileSystem | None = None) ->
             continue
 
         if not is_url(path):
-            raise NotImplementedError("Glob expansion only supported for URLs")
+            # Local filesystem glob (e.g. for on-prem/SLURM clusters with no cloud storage).
+            matches = sorted(_local_glob(path, recursive=True))
+            if not matches:
+                raise FileNotFoundError(path)
+            results.extend(matches)
+            continue
 
         parsed = urlparse(str(path))
         if parsed.scheme in ("s3", "r2", "weka"):

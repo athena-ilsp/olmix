@@ -59,32 +59,39 @@ TOKENIZERS: dict[str, Callable[[], TokenizerConfig]] = {
 }
 
 
+# Ai2's clusters ship flash-attn; on-prem/SLURM clusters often don't (it's a slow
+# CUDA source build and easy to skip). Set OLMIX_ATTN_BACKEND=torch to fall back to
+# PyTorch's built-in SDPA instead of patching every call site below.
+_ATTN_BACKEND_OVERRIDE = os.environ.get("OLMIX_ATTN_BACKEND")
+
+
 def _get_model_factory(tokenizer: TokenizerConfig) -> dict[str, Callable[[], TransformerConfig]]:
     """Get model factories with the given tokenizer's vocab size."""
     vocab_size = tokenizer.padded_vocab_size()
+    kwargs = {"attn_backend": _ATTN_BACKEND_OVERRIDE} if _ATTN_BACKEND_OVERRIDE else {}
     return {
         # OLMo2 models
-        "olmo2_1m": lambda: TransformerConfig.olmo2_1M(vocab_size=vocab_size),
-        "olmo2_30m": lambda: TransformerConfig.olmo2_30M(vocab_size=vocab_size),
-        "olmo2_60m": lambda: TransformerConfig.olmo2_60M(vocab_size=vocab_size),
-        "olmo2_190m": lambda: TransformerConfig.olmo2_190M(vocab_size=vocab_size),
-        "olmo2_1b": lambda: TransformerConfig.olmo2_1B_v2(vocab_size=vocab_size),
-        "olmo2_7b": lambda: TransformerConfig.olmo2_7B_v2(vocab_size=vocab_size),
+        "olmo2_1m": lambda: TransformerConfig.olmo2_1M(vocab_size=vocab_size, **kwargs),
+        "olmo2_30m": lambda: TransformerConfig.olmo2_30M(vocab_size=vocab_size, **kwargs),
+        "olmo2_60m": lambda: TransformerConfig.olmo2_60M(vocab_size=vocab_size, **kwargs),
+        "olmo2_190m": lambda: TransformerConfig.olmo2_190M(vocab_size=vocab_size, **kwargs),
+        "olmo2_1b": lambda: TransformerConfig.olmo2_1B_v2(vocab_size=vocab_size, **kwargs),
+        "olmo2_7b": lambda: TransformerConfig.olmo2_7B_v2(vocab_size=vocab_size, **kwargs),
         # OLMo3 models
-        "olmo3_1m": lambda: TransformerConfig.olmo3_1M(vocab_size=vocab_size),
-        "olmo3_14m": lambda: TransformerConfig.olmo3_14M(vocab_size=vocab_size),
-        "olmo3_30m": lambda: TransformerConfig.olmo3_30M(vocab_size=vocab_size),
-        "olmo3_60m": lambda: TransformerConfig.olmo3_60M(vocab_size=vocab_size),
-        "olmo3_100m": lambda: TransformerConfig.olmo3_100M(vocab_size=vocab_size),
-        "olmo3_190m": lambda: TransformerConfig.olmo3_190M(vocab_size=vocab_size),
-        "olmo3_370m": lambda: TransformerConfig.olmo3_370M(vocab_size=vocab_size),
-        "olmo3_600m": lambda: TransformerConfig.olmo3_600M(vocab_size=vocab_size),
-        "olmo3_760m": lambda: TransformerConfig.olmo3_760M(vocab_size=vocab_size),
-        "olmo3_1b": lambda: TransformerConfig.olmo3_1B(vocab_size=vocab_size),
-        "olmo3_3b": lambda: TransformerConfig.olmo3_3B(vocab_size=vocab_size),
-        "olmo3_7b": lambda: TransformerConfig.olmo3_7B(vocab_size=vocab_size),
-        "olmo3_13b": lambda: TransformerConfig.olmo3_13B(vocab_size=vocab_size),
-        "olmo3_32b": lambda: TransformerConfig.olmo3_32B(vocab_size=vocab_size),
+        "olmo3_1m": lambda: TransformerConfig.olmo3_1M(vocab_size=vocab_size, **kwargs),
+        "olmo3_14m": lambda: TransformerConfig.olmo3_14M(vocab_size=vocab_size, **kwargs),
+        "olmo3_30m": lambda: TransformerConfig.olmo3_30M(vocab_size=vocab_size, **kwargs),
+        "olmo3_60m": lambda: TransformerConfig.olmo3_60M(vocab_size=vocab_size, **kwargs),
+        "olmo3_100m": lambda: TransformerConfig.olmo3_100M(vocab_size=vocab_size, **kwargs),
+        "olmo3_190m": lambda: TransformerConfig.olmo3_190M(vocab_size=vocab_size, **kwargs),
+        "olmo3_370m": lambda: TransformerConfig.olmo3_370M(vocab_size=vocab_size, **kwargs),
+        "olmo3_600m": lambda: TransformerConfig.olmo3_600M(vocab_size=vocab_size, **kwargs),
+        "olmo3_760m": lambda: TransformerConfig.olmo3_760M(vocab_size=vocab_size, **kwargs),
+        "olmo3_1b": lambda: TransformerConfig.olmo3_1B(vocab_size=vocab_size, **kwargs),
+        "olmo3_3b": lambda: TransformerConfig.olmo3_3B(vocab_size=vocab_size, **kwargs),
+        "olmo3_7b": lambda: TransformerConfig.olmo3_7B(vocab_size=vocab_size, **kwargs),
+        "olmo3_13b": lambda: TransformerConfig.olmo3_13B(vocab_size=vocab_size, **kwargs),
+        "olmo3_32b": lambda: TransformerConfig.olmo3_32B(vocab_size=vocab_size, **kwargs),
     }
 
 
@@ -209,6 +216,14 @@ class TransformerConfigBuilder:
             self.checkpoint_dir = f"{self.root_dir}/checkpoints/{self.beaker_user.lower()}/{self.run_name}"
             self.work_dir = f"{self.root_dir}/{self.beaker_user.lower()}/{self.run_name}/dataset-cache"
         else:
+            # None of the known Ai2 clusters matched (e.g. an on-prem/SLURM cluster).
+            # checkpoint_dir was set above to s3://ai2-llm/... unconditionally, which
+            # a non-Ai2 environment can't write to (and the CheckpointerCallback's
+            # LoadStrategy.if_available check will 403 against it before training
+            # even starts). Route both dirs under a local root instead. Set
+            # OLMIX_LOCAL_ROOT to control where (defaults to root_dir, i.e. /tmp/<run_name>).
+            local_root = os.environ.get("OLMIX_LOCAL_ROOT", self.root_dir)
+            self.checkpoint_dir = f"{local_root}/checkpoints/{self.beaker_user.lower()}/{self.run_name}"
             self.work_dir = f"{self.root_dir}/{self.beaker_user.lower()}/{self.run_name}/dataset-cache"
 
     def get_warmup_tokens(self, num_params: int) -> int:

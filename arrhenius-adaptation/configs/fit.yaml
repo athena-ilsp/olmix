@@ -1,0 +1,41 @@
+# Fit config for the trivial toy-data smoke test.
+# swarm.ratios / swarm.metrics are produced by scripts/export_csvs.py (Step 7).
+
+swarm:
+  ratios: ratios.csv
+  metrics: metrics.csv
+
+priors:
+  relative_sizes:
+    web: 0.25
+    wiki: 0.25
+    code: 0.25
+    science: 0.25
+  token_counts:
+    web: 200000000
+    wiki: 200000000
+    code: 200000000
+    science: 200000000
+
+regression:
+  type: log_linear
+  seed: 0
+  n_test: 0
+  train_split: 1.0
+  aggregate_task_families: false
+
+proposer:
+  type: exact
+  temperature: null
+  kl_reg: 0.1
+  fit_only: false
+  make_worst_mix: false
+
+constraints:
+  enabled: false
+  target_tokens: null
+  repetition_factor: 5.0
+
+filtering:
+  drop_metrics: []
+  obj_weights: {}

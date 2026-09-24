@@ -1,0 +1,62 @@
+# Base launch config for the trivial toy-data smoke test on Arrhenius (SLURM/GH200).
+# `olmix generate` copies this verbatim per-variant, only overriding name/mix/group_id.
+#
+# infra.cluster is set to a name that does NOT match any of the Ai2 cluster substrings
+# olmix/model/transformer.py checks ("augusta", "jupiter", "saturn", "ceres", "neptune",
+# "titan") -- this makes _setup_dirs() fall through to its local-path else-branch.
+# infra.{budget,workspace} are unused outside the (unused) Beaker path; kept as
+# harmless placeholders since nothing validates them for generate/local-launch.
+
+name: toy-baseline
+description: Trivial local smoke test - synthetic tokens, 4 flat domains
+infra:
+  budget: local
+  workspace: local
+  cluster: arrhenius
+  priority: normal
+  nodes: 1
+  gpus: 1
+training:
+  proxy_model_id: olmo3_14m
+  tokenizer: dolma2
+  chinchilla_multiple: 0.5
+  seed: 42
+  global_batch_size: 16
+data:
+  sources:
+  - name: web
+    paths:
+    - "/path/to/olmix-work/data/web/*.npy"
+  - name: wiki
+    paths:
+    - "/path/to/olmix-work/data/wiki/*.npy"
+  - name: code
+    paths:
+    - "/path/to/olmix-work/data/code/*.npy"
+  - name: science
+    paths:
+    - "/path/to/olmix-work/data/science/*.npy"
+eval:
+  # Kept small and cheap on purpose -- these are only enabled in Step 7 (the
+  # first pass trains with --no-eval). Task IDs/metric names below mirror the
+  # convention in configs/examples/launch/data_proportions/mix_baseline.yaml.
+  type: inloop
+  tasks:
+    qa:
+      hellaswag_rc_5shot: eval/downstream/hellaswag_rc_5shot (BPB v2)
+      piqa_val_rc_5shot: eval/downstream/piqa_val_rc_5shot (BPB v2)
+      arc_easy_test_rc_5shot: eval/downstream/arc_easy_test_rc_5shot (BPB v2)
+      winogrande_val_rc_5shot: eval/downstream/winogrande_val_rc_5shot (BPB v2)
+mix:
+  web:
+    weight: 0.25
+    repetition_factor: 1.0
+  wiki:
+    weight: 0.25
+    repetition_factor: 1.0
+  code:
+    weight: 0.25
+    repetition_factor: 1.0
+  science:
+    weight: 0.25
+    repetition_factor: 1.0
